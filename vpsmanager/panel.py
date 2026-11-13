@@ -116,7 +116,8 @@ def authenticate(url):
     url=url.rstrip('/')+'/'
     if saved and saved.get('url')==url:
         print('Используются сохранённые данные панели.')
-        if input('Enter — войти; 1 — заменить данные; 2 — удалить: ').strip() not in ('1','2'):
+        choice=input('Enter — войти; 1 — заменить данные; 2 — удалить: ').strip()
+        if choice not in ('1','2'):
             try:
                 return Panel(url,saved['username'],saved['password'],getpass.getpass('Код 2FA, если включён (иначе Enter): '))
             except Error:
