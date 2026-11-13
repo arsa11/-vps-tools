@@ -59,6 +59,18 @@ def ensure_standard():
     if unit.strip() and str(BINARY) not in unit: raise Error('Нестандартный unit x-ui. Мастер работает только с /usr/local/x-ui/x-ui.')
     if BINARY.exists() and not Path('/etc/x-ui/x-ui.db').exists(): raise Error('Стандартная SQLite БД не найдена. PostgreSQL/перенесённые пути требуют отдельного адаптера.')
 
+
+def choose_access():
+    print('Доступ к панели:')
+    print('1. Только через SSH-туннель (127.0.0.1)')
+    print('2. Обычный доступ по IP и порту (0.0.0.0)')
+    choice=input('Выбор [1]: ').strip() or '1'
+    if choice not in ('1','2'): raise Error('Выберите 1 или 2.')
+    if choice=='2':
+        print('Без настроенного сертификата панель будет доступна по HTTP: логин и пароль передаются без HTTPS. Настройте SSL в разделе 6.')
+        confirm('Открыть доступ к панели по сети')
+    return '127.0.0.1' if choice=='1' else '0.0.0.0'
+
 def install():
     supported(); ensure_standard(); arch={'x86_64':'amd64','aarch64':'arm64'}.get(platform.machine())
     if not arch: raise Error('Неподдерживаемая архитектура.')
@@ -81,6 +93,7 @@ def install():
         if len(bins)!=1: raise Error('Неверная структура дистрибутива.')
         binary=bins[0]; run([binary,'-v'],cwd=binary.parent)
         fresh=not BINARY.exists() and not Path('/etc/x-ui/x-ui.db').exists(); print('Операция:', 'установка' if fresh else 'замена версии с резервной копией БД и бинарников')
+        access=choose_access() if fresh else None
         confirm('Применить выбранный дистрибутив '+version)
         tx=Transaction('3x-ui install '+version,PANEL_PATHS,undo_panel(),600).arm()
         try:
@@ -96,9 +109,13 @@ def install():
                 number=port(input('Порт панели [2053]: ') or 2053); free_port(number)
                 username=input('Логин [admin]: ').strip() or 'admin'; password=secrets.token_urlsafe(24); base='/'+secrets.token_urlsafe(18)+'/'
                 # Official CLI is used only before the service is exposed. Output is captured.
-                run([BINARY,'setting','-username',username,'-password',password,'-port',str(number),'-webBasePath',base,'-listenIP','127.0.0.1'],cwd=target)
+                run([BINARY,'setting','-username',username,'-password',password,'-port',str(number),'-webBasePath',base,'-listenIP',access],cwd=target)
                 write(STATE/'panel-access.json',{'username':username,'password':password,'url':f'http://127.0.0.1:{number}{base}'})
-                print('Панель привязана к localhost. Данные входа: /var/lib/vps-manager/panel-access.json (0600). Используйте SSH-туннель или настройте HTTPS перед внешним доступом.')
+                if access=='127.0.0.1':
+                    print('Панель доступна через SSH-туннель. Данные входа: /var/lib/vps-manager/panel-access.json (0600).')
+                else:
+                    print('Панель слушает все IPv4-адреса. Откройте http://IP_СЕРВЕРА:'+str(number)+base)
+                    print('Данные входа: /var/lib/vps-manager/panel-access.json (0600). Для внешнего подключения может потребоваться разрешить порт в firewall.')
             run(['systemctl','enable','--now','x-ui']); panel_health(); finish(tx)
         except BaseException: tx.rollback(); raise
 
@@ -109,7 +126,9 @@ def configure():
     new['webListen']=str(__import__('ipaddress').ip_address(input('Адрес привязки ['+str(old.get('webListen') or '0.0.0.0')+']: ') or old.get('webListen') or '0.0.0.0'))
     if new['webPort']!=old.get('webPort'): free_port(new['webPort'],new['webListen'])
     if input('Создать случайный webBasePath? [y/N]: ').lower()=='y': new['webBasePath']='/'+secrets.token_urlsafe(18)+'/'
-    if new['webListen'] not in ('127.0.0.1','::1') and not new.get('webCertFile'): raise Error('Сначала подключите HTTPS-сертификат или оставьте localhost.')
+    if new['webListen'] not in ('127.0.0.1','::1') and not new.get('webCertFile'):
+        print('Панель будет доступна по HTTP без шифрования. Для HTTPS настройте сертификат в разделе 6.')
+        confirm('Разрешить внешний доступ без HTTPS')
     confirm('Изменить настройки доступа к панели')
     tx=Transaction('panel settings',PANEL_PATHS,undo_panel(),300).arm()
     try:
