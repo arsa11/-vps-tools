@@ -57,6 +57,7 @@ def reality_payload(entry,number,remark,sni,target):
     payload.update(port=port(number),remark=remark)
     reality=stream['realitySettings']
     reality['serverNames']=[hostname(sni)]
+    if 'serverName' in reality.get('settings',{}): reality['settings']['serverName']=hostname(sni)
     reality['target' if 'target' in reality else 'dest']=target
     payload['streamSettings']=json.dumps(stream)
     return payload
