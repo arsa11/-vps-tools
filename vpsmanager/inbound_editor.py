@@ -120,9 +120,10 @@ def reality(value):
     if value['xver'] not in (0,1,2): raise Error('xver должен быть 0, 1 или 2.')
 
 def edit(entry):
+    from .panel_forms import reality_form, sniffing_form, transport_form
     value=draft(entry)
     while True:
-        print('\n1. Основное: имя, порт, адрес, лимиты\n2. Клиенты\n3. Reality: SNI, target, short IDs\n4. Sniffing\n5. Transport / расширенные JSON-настройки\n6. Проверить TLS target\n7. Проверить список доменов-кандидатов\n8. Применить изменения\n0. Отменить')
+        print('\n1. Основное: имя, порт, адрес, лимиты\n2. Клиенты\n3. Reality: SNI, target, short IDs\n4. Sniffing\n5. Transport: TCP, WebSocket, gRPC, XHTTP\n9. Дополнительные поля JSON\n6. Проверить TLS target\n7. Проверить список доменов-кандидатов\n8. Применить изменения\n0. Отменить')
         action=input('Выбор: ').strip()
         before=copy.deepcopy(value)
         try:
@@ -141,9 +142,10 @@ def edit(entry):
                 value['total']=number('Общий лимит байт, 0 — без лимита',value.get('total',0))
                 value['expiryTime']=expiry(value.get('expiryTime',0))
             elif action=='2': clients(value['settings'])
-            elif action=='3': reality(value['streamSettings']['realitySettings'])
-            elif action=='4': sniffing(value.setdefault('sniffing',{}))
-            elif action=='5':
+            elif action=='3': reality_form(value['streamSettings']['realitySettings'])
+            elif action=='4': sniffing_form(value.setdefault('sniffing',{}))
+            elif action=='5': transport_form(value['streamSettings'])
+            elif action=='9':
                 print('Раздел: settings / streamSettings / sniffing / allocate. JSON заменяет весь раздел; содержит секреты. Enter — назад.')
                 key=input('Раздел: ').strip()
                 if key not in JSON_FIELDS: continue
