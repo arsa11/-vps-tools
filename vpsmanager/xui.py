@@ -71,6 +71,35 @@ def choose_access():
         confirm('Открыть доступ к панели по сети')
     return '127.0.0.1' if choice=='1' else '0.0.0.0'
 
+def choose_release(arch):
+    repo='MHSanaei/3x-ui'
+    print('Загружаем стабильные релизы 3x-ui с GitHub…')
+    try: available=releases.stable_releases(repo,arch)
+    except Error as e:
+        print('Не удалось получить список:',e)
+        print('Можно попробовать точный тег или вернуться и выбрать локальный архив.')
+        available=[]
+    if available:
+        print('Доступные стабильные версии (порядок публикации на GitHub):')
+        for i,item in enumerate(available,1):
+            print(f"{i}. {item['tag_name']}  {str(item.get('published_at') or '')[:10]}")
+        print('Enter — последняя стабильная версия; 0 — ввести тег вручную; q — отмена.')
+    else:
+        print('Список пуст. Enter — последняя стабильная версия; 0 — ввести тег; q — отмена.')
+    while True:
+        choice=input('Версия: ').strip()
+        if choice.lower() in ('q','й'): raise Error('Выбор версии отменён.')
+        if not choice: tag='latest'; break
+        if choice=='0':
+            tag=input('Точный тег версии (например v3.4.5): ').strip()
+            if not tag: print('Тег не указан.'); continue
+            break
+        if choice.isdigit() and 1<=int(choice)<=len(available): tag=available[int(choice)-1]['tag_name']; break
+        if not choice.isdigit(): tag=choice; break
+        print('Нет версии с таким номером. Выберите номер из списка, 0 или q.')
+    # Re-fetch the selected release; do not substitute latest for an unavailable tag.
+    return releases.release(repo,tag)
+
 def install():
     supported(); ensure_standard(); arch={'x86_64':'amd64','aarch64':'arm64'}.get(platform.machine())
     if not arch: raise Error('Неподдерживаемая архитектура.')
@@ -83,8 +112,7 @@ def install():
             if len(expected)!=64 or sha(archive)!=expected: raise Error('SHA256 не совпадает.')
             version='local'
         else:
-            tag=input('Точный тег версии или latest [latest]: ').strip() or 'latest'
-            rel=releases.release('MHSanaei/3x-ui',tag); version=rel['tag_name']; print('Выбран релиз:',version)
+            rel=choose_release(arch); version=rel['tag_name']; print('Выбран релиз:',version)
             archive=d/'x-ui.tar.gz'
             verified=releases.download_asset('MHSanaei/3x-ui',rel,'x-ui-linux-'+arch+'.tar.gz',archive)
             if not verified: confirm('Издатель не указал SHA256 через API. Архив получен по HTTPS с официального GitHub. Продолжить')

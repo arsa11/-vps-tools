@@ -23,6 +23,14 @@ def release(repo,tag='latest'):
     if tag!='latest' and obj.get('tag_name')!=tag: raise Error('Релиз не совпал с запрошенным.')
     return obj
 
+def stable_releases(repo,arch,limit=20):
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',repo): raise Error('Некорректный репозиторий.')
+    try: items=json.loads(fetch('https://api.github.com/repos/'+repo+'/releases?per_page=100',8*1024*1024))
+    except (ValueError,TypeError): raise Error('Не удалось прочитать список релизов GitHub.') from None
+    if not isinstance(items,list): raise Error('GitHub вернул некорректный список релизов.')
+    asset='x-ui-linux-'+arch+'.tar.gz'
+    return [item for item in items if isinstance(item,dict) and not item.get('draft') and not item.get('prerelease') and re.fullmatch(r'v?\d+\.\d+\.\d+',str(item.get('tag_name',''))) and any(a.get('name')==asset for a in item.get('assets',[]))][:limit]
+
 def download_asset(repo,rel,name,destination):
     matches=[a for a in rel['assets'] if a['name']==name]
     if len(matches)!=1: raise Error('В этом релизе нет архива '+name)

@@ -1,5 +1,6 @@
 """3x-ui authenticated API. Credentials remain in memory."""
-import getpass, http.cookiejar, ipaddress, json, urllib.parse, urllib.request, urllib.error
+import contextlib, getpass, http.cookiejar, ipaddress, json, sqlite3, urllib.parse, urllib.request, urllib.error
+from pathlib import Path
 from .core import Error
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs): return None
@@ -49,10 +50,47 @@ class Panel:
     def restart_xray(self): return self.request('panel/api/server/restartXrayService',{})
     def status(self): return self.request('panel/api/server/status')
 
+def detect_local_url(db=Path('/etc/x-ui/x-ui.db')):
+    """Read non-secret panel settings only; never alter the panel database."""
+    try:
+        if not db.is_file(): return None
+        with contextlib.closing(sqlite3.connect(db.resolve().as_uri()+'?mode=ro',uri=True)) as connection:
+            rows=connection.execute("SELECT key,value FROM settings WHERE key IN ('webPort','webBasePath','webListen','webCertFile','webDomain')").fetchall()
+        settings=dict(rows)
+        number=int(settings.get('webPort') or 2053)
+        if not 1<=number<=65535: return None
+        path=settings.get('webBasePath') or '/'
+        if not path.startswith('/') or any(c in path for c in ('?','#','\\','\n','\r')): return None
+        if not path.endswith('/'): path+='/'
+        listen=settings.get('webListen') or '127.0.0.1'
+        if listen in ('0.0.0.0','::','::0'): listen='127.0.0.1' if listen=='0.0.0.0' else '::1'
+        if settings.get('webCertFile'):
+            # Certificate verification must use its actual hostname, never silently disable TLS checks.
+            domain=settings.get('webDomain')
+            if not domain: return None
+            host=domain
+            scheme='https'
+        else:
+            try: host=str(ipaddress.ip_address(listen))
+            except ValueError: return None
+            scheme='http'
+            if not ipaddress.ip_address(host).is_loopback:
+                # Plain HTTP is deliberately limited to loopback by Panel.
+                return None
+        if ':' in host: host='['+host+']'
+        return f'{scheme}://{host}:{number}{path}'
+    except (OSError,ValueError,sqlite3.Error): return None
+
 def connect():
     import socket
     from .core import run
-    url=input('URL ЛОКАЛЬНОЙ панели (с webBasePath, например http://127.0.0.1:2053/path/): ').strip()
+    detected=detect_local_url()
+    if detected:
+        print('Обнаружен адрес панели:',detected)
+        url=input('Нажмите Enter для него или введите другой URL: ').strip() or detected
+    else:
+        print('Адрес не определён автоматически (например, для HTTPS нужен домен сертификата).')
+        url=input('URL ЛОКАЛЬНОЙ панели с webBasePath: ').strip()
     host=urllib.parse.urlsplit(url).hostname
     try:
         addresses={item[4][0] for item in socket.getaddrinfo(host,None)}
