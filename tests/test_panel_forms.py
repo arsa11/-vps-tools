@@ -35,3 +35,10 @@ class PanelFormsTests(unittest.TestCase):
             transport_form(value)
         self.assertEqual(value['grpcSettings']['serviceName'],'service')
         self.assertEqual(value['realitySettings']['privateKey'],'preserve')
+
+    def test_null_inactive_transport_settings(self):
+        value={'network':'tcp','wsSettings':None}
+        with patch('builtins.input',side_effect=['2','/ws','example.com','0']):
+            transport_form(value)
+        self.assertEqual(value['wsSettings']['path'],'/ws')
+        self.assertEqual(value['wsSettings']['headers']['Host'],'example.com')
