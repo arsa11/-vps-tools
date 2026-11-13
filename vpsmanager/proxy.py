@@ -17,6 +17,11 @@ def build_reality(number,sni,target_port,private,public,ident,sid,email):
 
 def reality():
     supported(); panel=connect(); inbounds=panel.inbounds()
+    print('1. Создать новый Reality inbound\n2. Изменить существующий Reality inbound\n0. Назад')
+    choice=input('Выбор: ').strip()
+    if choice=='0': return
+    if choice=='2': return edit_reality(panel,inbounds)
+    if choice!='1': raise Error('Выберите 0, 1 или 2.')
     number=port(input('Порт Reality [443]: ') or 443)
     if any(int(i['port'])==number for i in inbounds): raise Error('Inbound с этим портом уже существует.')
     free_port(number); sni=hostname(input('SNI/target домен с TLS 1.3: ').strip()); target_port=port(input('Порт target [443]: ') or 443)
@@ -43,6 +48,58 @@ def reality():
             try: print(run(['qrencode','-t','ANSIUTF8'],input=uri).stdout)
             except Error: print('QR недоступен: установите qrencode. Клиентская ссылка уже сохранена.')
         finish(tx,'Подключение клиентом проверено и inbound нужно сохранить')
+    except BaseException: tx.rollback(); raise
+
+def reality_payload(entry,number,remark,sni,target):
+    payload={key:copy.deepcopy(entry[key]) for key in ('up','down','total','remark','enable','expiryTime','listen','port','protocol','settings','streamSettings','sniffing','allocate') if key in entry}
+    stream=json.loads(payload['streamSettings'])
+    if payload['protocol']!='vless' or stream.get('security')!='reality': raise Error('Выбранный inbound не VLESS Reality.')
+    payload.update(port=port(number),remark=remark)
+    reality=stream['realitySettings']
+    reality['serverNames']=[hostname(sni)]
+    reality['target' if 'target' in reality else 'dest']=target
+    payload['streamSettings']=json.dumps(stream)
+    return payload
+
+def edit_reality(panel,entries):
+    candidates=[i for i in entries if i.get('protocol')=='vless' and json.loads(i['streamSettings']).get('security')=='reality']
+    if not candidates: raise Error('Существующих VLESS Reality inbound нет.')
+    for i in candidates: print('ID:',i['id'],'порт:',i['port'],'название:',i.get('remark',''))
+    selected=input('ID inbound (Enter — назад): ').strip()
+    if not selected: return
+    old=next((i for i in candidates if str(i['id'])==selected),None)
+    if old is None: raise Error('Неизвестный ID.')
+    settings=json.loads(old['streamSettings'])['realitySettings']
+    names=settings.get('serverNames',[])
+    if len(names)!=1: raise Error('Несколько SNI: используйте расширенный редактор панели, чтобы сохранить список.')
+    number=port(input('Порт ['+str(old['port'])+']: ').strip() or old['port'])
+    if number!=int(old['port']):
+        if any(int(i['port'])==number for i in entries): raise Error('Порт занят другим inbound.')
+        free_port(number)
+    remark=input('Название ['+old.get('remark','')+']: ').strip() or old.get('remark','')
+    sni=hostname(input('SNI ['+names[0]+']: ').strip() or names[0])
+    previous=settings.get('dest',settings.get('target',''))
+    target=input('TLS target host:port ['+str(previous)+']: ').strip() or str(previous)
+    host,separator,number_text=target.rpartition(':')
+    if not separator: raise Error('Нужен TLS target host:port.')
+    host=hostname(host.strip('[]')); target_port=port(number_text)
+    target=('['+host+']' if ':' in host else host)+':'+str(target_port)
+    payload=reality_payload(old,number,remark,sni,target)
+    run(['openssl','s_client','-connect',target,'-servername',sni,'-tls1_3','-brief'],input='',timeout=15)
+    probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':json.loads(payload['settings']),'streamSettings':json.loads(payload['streamSettings'])}],'outbounds':[{'protocol':'freedom'}]}
+    validate_config(probe)
+    print('Клиенты, UUID и ключи сохраняются. При изменении порта или SNI обновите настройки клиентов.')
+    confirm('Изменить выбранный inbound '+selected)
+    tx=Transaction('Edit Reality inbound',PANEL_PATHS,undo_panel(),300).arm()
+    try:
+        current=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
+        fields=('remark','enable','expiryTime','listen','port','protocol','settings','streamSettings','sniffing','allocate')
+        if current is None or any(current.get(k)!=old.get(k) for k in fields): raise Error('Inbound изменён другим пользователем. Повторите операцию.')
+        panel.request('panel/api/inbounds/update/'+selected,payload)
+        panel.restart_xray(); time.sleep(3); panel_health()
+        after=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
+        if after is None or int(after['port'])!=number or after.get('remark')!=remark or json.loads(after['streamSettings'])!=json.loads(payload['streamSettings']): raise Error('Панель не сохранила настройки.')
+        finish(tx,'Проверьте подключение клиентом. Сохранить настройки')
     except BaseException: tx.rollback(); raise
 
 def outbound_probe(outbound,url='https://www.cloudflare.com/cdn-cgi/trace'):
@@ -117,3 +174,4 @@ def routing():
         if panel.template().get('routing')!=new['routing']: raise Error('Панель не сохранила правила.')
         finish(tx,'Проверьте RU и зарубежный домен через подключённый клиент. Маршруты работают')
     except BaseException: tx.rollback(); raise
+
