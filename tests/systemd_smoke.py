@@ -4,7 +4,8 @@ from pathlib import Path
 if os.environ.get('VPS_MANAGER_DISPOSABLE_TEST')!='1' or os.name!='posix' or os.geteuid()!=0 or not Path('/run/systemd/system').exists():
     raise SystemExit('Requires explicit disposable Linux/systemd test environment.')
 root=Path(__file__).resolve().parents[1]
-with tempfile.TemporaryDirectory(prefix='vps-manager-smoke-') as d:
+# Docker exec and systemd services may see different /tmp mounts.
+with tempfile.TemporaryDirectory(prefix='vps-manager-smoke-',dir='/var/lib') as d:
     d=Path(d); target=d/'fixture'; target.write_text('before'); state=d/'state'
     worker=d/'worker.py'
     worker.write_text('import sys,time\nfrom pathlib import Path\nsys.path.insert(0,'+repr(str(root))+')\nfrom vpsmanager.transaction import Transaction\nfrom vpsmanager.core import write\nt=Transaction("test",['+repr(str(target))+'],seconds=12).arm()\nwrite('+repr(str(target))+',"changed")\nprint(t.id,flush=True)\ntime.sleep(90)\n')
