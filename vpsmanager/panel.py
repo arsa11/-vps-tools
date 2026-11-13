@@ -1,5 +1,5 @@
 """3x-ui authenticated API. Credentials remain in memory."""
-import contextlib, getpass, http.cookiejar, ipaddress, json, sqlite3, urllib.parse, urllib.request, urllib.error
+import contextlib, getpass, http.cookiejar, ipaddress, json, socket, sqlite3, ssl, urllib.parse, urllib.request, urllib.error
 from pathlib import Path
 from .core import Error
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -67,6 +67,26 @@ def detect_local_url(db=Path('/etc/x-ui/x-ui.db')):
         if settings.get('webCertFile'):
             # Certificate verification must use its actual hostname, never silently disable TLS checks.
             domain=settings.get('webDomain')
+            if not domain:
+                # Panel versions may omit webDomain, including certificates issued to a public IP.
+                # Only suggest certificate identities actually belonging to this host.
+                try:
+                    from .core import run
+                    interfaces=json.loads(run(['ip','-j','address']).stdout)
+                    local={ipaddress.ip_address(a['local']) for iface in interfaces for a in iface.get('addr_info',[]) if a.get('local')}
+                    local.update((ipaddress.ip_address('127.0.0.1'),ipaddress.ip_address('::1')))
+                    cert=ssl._ssl._test_decode_cert(settings['webCertFile'])
+                    for kind,value in cert.get('subjectAltName',[]):
+                        if kind=='IP Address':
+                            try:
+                                if ipaddress.ip_address(value) in local: domain=value; break
+                            except ValueError: continue
+                        elif kind=='DNS' and not value.startswith('*.'):
+                            try:
+                                resolved={ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(value,None)}
+                                if resolved and resolved<=local: domain=value; break
+                            except (socket.gaierror,ValueError): continue
+                except (OSError,ValueError,KeyError,TypeError,ssl.SSLError,Error): pass
             if not domain: return None
             host=domain
             scheme='https'
