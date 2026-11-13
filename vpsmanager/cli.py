@@ -1,7 +1,7 @@
 """Interactive Russian CLI and automation-friendly read-only commands."""
 import argparse, json, os, sys
 from pathlib import Path
-from .core import Error, STATE, VERSION, active, confirm, lock, private_dir, read, redact, root, run, supported, write
+from .core import Error, STATE, active, display_version, confirm, lock, private_dir, read, redact, root, run, supported, write
 from . import backup, system, network, xui, proxy, certificates, security, updates
 from .transaction import Transaction, finish, rollback
 
@@ -113,7 +113,7 @@ def quick():
     print('Мастер завершён. Результаты шагов сохранены:',file)
 
 def menu():
-    select('VPS Manager '+VERSION,[
+    select('VPS Manager '+display_version(),[
       ('Подготовка сервера',lambda:select('Подготовка',[('Проверить и установить пакеты',system.prepare),('DNS Manager',system.dns),('NTP',system.ntp),('APT upgrade отдельно',system.upgrade)])),
       ('Установка / управление 3x-ui',lambda:select('3x-ui',[('Установить / обновить / сменить версию',xui.install),('Настройки панели',xui.configure),('Сменить логин и пароль',xui.credentials),('Служба x-ui',service_action),('Версия и проверка Xray',xray_check),('Обновить Xray отдельно',xui.xray_update),('Журнал (с маскированием)',xray_logs),('Открыть оригинальное меню 3x-ui (x-ui)',xui.official_menu)])),
       ('Управление IPv4 / IPv6',lambda:select('Сеть',[('Текущее состояние',lambda:print(json.dumps(network.inspect(),ensure_ascii=False,indent=2))),('Добавить адрес и изменить исходящий IP',network.change),('Проверить после перезагрузки',network.verify_persistent)])),
@@ -126,7 +126,7 @@ def menu():
 
 def main():
     parser=argparse.ArgumentParser(description='VPS Manager — Debian 12/13, Ubuntu 22.04/24.04')
-    parser.add_argument('--version',action='version',version=VERSION)
+    parser.add_argument('--version',action='version',version=display_version())
     sub=parser.add_subparsers(dest='command')
     d=sub.add_parser('diagnose'); d.add_argument('--online',action='store_true'); d.add_argument('--json',action='store_true'); d.add_argument('--output')
     for command in ('menu','prepare','dns','ntp','backup','list-backups','restore','transactions','network','network-verify','xui','reality','routing','ssl','security','update','quick-setup','install-local'): sub.add_parser(command)

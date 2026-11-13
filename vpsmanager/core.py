@@ -3,6 +3,17 @@ import contextlib, datetime, hashlib, ipaddress, json, os, re, socket, subproces
 from pathlib import Path
 VERSION = '1.0.0'
 STATE = Path(os.environ.get('VPS_MANAGER_STATE', '/var/lib/vps-manager'))
+
+def display_version():
+    """Show the release number and, when known, the installed source revision."""
+    metadata=Path(__file__).resolve().parent.parent/'vpsmanager-source.json'
+    try:
+        info=json.loads(metadata.read_text(encoding='utf-8'))
+        revision=info.get('commit','')
+        if isinstance(revision,str) and re.fullmatch(r'[0-9a-f]{40}',revision):
+            return VERSION+' (GitHub '+revision[:12]+(' · локальные изменения' if info.get('dirty') else '')+')'
+    except (OSError,ValueError,TypeError,AttributeError): pass
+    return VERSION+' (версия GitHub неизвестна)'
 LOG = Path('/var/log/vps-manager/events.jsonl')
 class Error(RuntimeError): pass
 

@@ -81,7 +81,7 @@ VPS Manager — программа, которая запускается **на
 | Команда | Назначение |
 | --- | --- |
 | `vps-manager` или `vps-manager menu` | Открыть главное меню. |
-| `vps-manager --version` | Показать версию менеджера. |
+| `vps-manager --version` | Показать номер программы и короткий commit GitHub (если известен). |
 | `vps-manager diagnose` | Локальная диагностика без внешних проверок. |
 | `vps-manager diagnose --online` | Диагностика с проверкой внешнего DNS, HTTPS и IPv4/IPv6. |
 | `vps-manager diagnose --online --json --output /root/vps-report.json` | Выполнить внешние проверки и сохранить JSON-отчёт; также вывести JSON на экран. |

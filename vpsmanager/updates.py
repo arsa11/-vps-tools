@@ -20,7 +20,8 @@ def github_update():
     current=read(installed).get('commit') if installed.is_file() else None
     print('Установленная версия GitHub:',current[:12] if isinstance(current,str) else 'неизвестна (установлена до появления этой функции)')
     print('Версия на GitHub:',revision[:12],'-',message)
-    if current==revision:
+    dirty=read(installed).get('dirty',False) if installed.is_file() else False
+    if current==revision and not dirty:
         print('Уже установлены последние изменения.'); return
     print('Источник: ветка main вашего GitHub-репозитория. Архив скачивается по конкретному commit через HTTPS; отдельной подписи релиза нет.')
     confirm('Загрузить и установить эти изменения, сохранив предыдущую версию')
@@ -69,6 +70,16 @@ def update():
 def deploy(source):
     INSTALL.mkdir(parents=True,exist_ok=True); root=INSTALL/'releases'; root.mkdir(exist_ok=True)
     destination=root/uuid.uuid4().hex; shutil.copytree(source,destination,ignore=shutil.ignore_patterns('__pycache__','research','tmp*','.git','.devtools','.test-tools','dist'))
+    metadata=destination/'vpsmanager-source.json'
+    if not metadata.exists():
+        # install.sh is commonly run from a Git checkout; retain its exact revision.
+        try:
+            top=run(['git','-C',source,'rev-parse','--show-toplevel']).stdout.strip()
+            if Path(top).resolve()==Path(source).resolve():
+                revision=run(['git','-C',source,'rev-parse','HEAD']).stdout.strip()
+                dirty=bool(run(['git','-C',source,'status','--porcelain','--untracked-files=no']).stdout.strip())
+                if re.fullmatch(r'[0-9a-f]{40}',revision): write(metadata,{'repository':'arsa11/-vps-tools','commit':revision,'dirty':dirty})
+        except Error: pass
     current=INSTALL/'current'
     if current.exists() and not current.is_symlink(): raise Error('/opt/vps-manager/current должен быть ссылкой.')
     previous=os.readlink(current) if current.is_symlink() else None
