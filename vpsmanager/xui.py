@@ -1,4 +1,4 @@
-import contextlib, http.client, json, os, ssl, platform, secrets, shutil, socket, sqlite3, tempfile, time
+import contextlib, hashlib, http.client, json, os, re, ssl, platform, secrets, shutil, socket, sqlite3, subprocess, tempfile, time
 from pathlib import Path
 from .core import Error, STATE, active, confirm, free_port, port, private_dir, run, sha, supported, wait_active, write
 from . import releases
@@ -146,6 +146,39 @@ def install():
                     print('Данные входа: /var/lib/vps-manager/panel-access.json (0600). Для внешнего подключения может потребоваться разрешить порт в firewall.')
             run(['systemctl','enable','--now','x-ui']); panel_health(); finish(tx)
         except BaseException: tx.rollback(); raise
+
+def official_menu():
+    """Launch the upstream interactive shell menu with the user's terminal attached."""
+    supported()
+    if not BINARY.is_file(): raise Error('3x-ui не обнаружен: сначала установите панель.')
+    # The Go panel binary is a server, not the interactive shell menu.
+    candidates=[shutil.which('x-ui'),'/usr/bin/x-ui','/usr/local/x-ui/x-ui.sh']
+    for item in candidates:
+        if not item: continue
+        path=Path(item)
+        if path.is_file() and path.resolve()!=BINARY.resolve() and os.access(path,os.X_OK):
+            print('Открывается штатное меню 3x-ui. Его действия выполняются самой 3x-ui; откат VPS Manager для них не запускается. После выхода вы вернётесь в VPS Manager.',flush=True)
+            result=subprocess.run([str(path)])
+            if result.returncode: raise Error('Меню x-ui завершилось с кодом '+str(result.returncode)+'.')
+            return
+    print('Штатное меню x-ui не установлено. Можно загрузить официальный скрипт меню для установленной версии.')
+    version=run([BINARY,'-v'],cwd=BINARY.parent).stdout.strip()
+    if not re.fullmatch(r'v?\d+\.\d+\.\d+',version):
+        raise Error('Не удалось определить точную версию панели. Установите официальный скрипт x-ui из соответствующего релиза вручную.')
+    tag=version if version.startswith('v') else 'v'+version
+    releases.release('MHSanaei/3x-ui',tag)
+    data=releases.fetch('https://raw.githubusercontent.com/MHSanaei/3x-ui/'+tag+'/x-ui.sh',2*1024*1024)
+    if not data.startswith(b'#!/bin/bash'): raise Error('Официальный файл меню имеет неожиданный формат.')
+    print('Официальное меню версии',tag,'SHA256:',hashlib.sha256(data).hexdigest())
+    print('Операции внутри оригинального меню выполняются самой 3x-ui и могут не поддерживать откат VPS Manager.')
+    confirm('Запустить скачанное официальное меню 3x-ui')
+    private_dir(STATE/'tmp')
+    with tempfile.TemporaryDirectory(dir=STATE/'tmp') as folder:
+        script=Path(folder)/'x-ui.sh'; write(script,data,0o700)
+        run(['bash','-n',script])
+        result=subprocess.run(['bash',str(script)])
+        if result.returncode: raise Error('Меню x-ui завершилось с кодом '+str(result.returncode)+'.')
+
 
 def configure():
     from .panel import connect

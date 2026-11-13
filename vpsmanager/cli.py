@@ -115,7 +115,7 @@ def quick():
 def menu():
     select('VPS Manager '+VERSION,[
       ('Подготовка сервера',lambda:select('Подготовка',[('Проверить и установить пакеты',system.prepare),('DNS Manager',system.dns),('NTP',system.ntp),('APT upgrade отдельно',system.upgrade)])),
-      ('Установка / управление 3x-ui',lambda:select('3x-ui',[('Установить / обновить / сменить версию',xui.install),('Настройки панели',xui.configure),('Сменить логин и пароль',xui.credentials),('Служба x-ui',service_action),('Версия и проверка Xray',xray_check),('Обновить Xray отдельно',xui.xray_update),('Журнал (с маскированием)',xray_logs)])),
+      ('Установка / управление 3x-ui',lambda:select('3x-ui',[('Установить / обновить / сменить версию',xui.install),('Настройки панели',xui.configure),('Сменить логин и пароль',xui.credentials),('Служба x-ui',service_action),('Версия и проверка Xray',xray_check),('Обновить Xray отдельно',xui.xray_update),('Журнал (с маскированием)',xray_logs),('Открыть оригинальное меню 3x-ui (x-ui)',xui.official_menu)])),
       ('Управление IPv4 / IPv6',lambda:select('Сеть',[('Текущее состояние',lambda:print(json.dumps(network.inspect(),ensure_ascii=False,indent=2))),('Добавить адрес и изменить исходящий IP',network.change),('Проверить после перезагрузки',network.verify_persistent)])),
       ('Настройка VLESS Reality',proxy.reality),('Каскад RU → EU',proxy.routing),('SSL-сертификаты',certificates.certificates),
       ('Безопасность VPS',lambda:select('Безопасность',[('Аудит',security.audit),('Firewall',security.firewall),('Ограничить доступ к панели',security.restrict_panel),('Добавить SSH-ключ',security.ssh_keys),('Отключить парольный SSH после проверки ключа',security.harden_ssh),('Fail2ban',security.fail2ban)])),
