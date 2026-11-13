@@ -1,0 +1,7 @@
+{
+  "mode": "ru-direct-eu",
+  "domainStrategy": "IPIfNonMatch",
+  "directDomains": ["domain:ru", "domain:su", "domain:xn--p1ai"],
+  "directIPs": ["geoip:ru"],
+  "defaultOutbound": "vps-manager-eu"
+}
