@@ -53,11 +53,37 @@ def transaction_rollback():
     if not __import__('re').fullmatch('[0-9a-f]{32}',ident): raise Error('Некорректный ID.')
     rollback(STATE/'transactions'/ident)
 
-def service_action():
-    supported(); action=input('start / stop / restart / enable / disable: ').strip()
-    if action not in ('start','stop','restart','enable','disable'): raise Error('Неверная команда.')
-    confirm('Выполнить '+action+' для x-ui'); run(['systemctl',action,'x-ui'])
+def service_command(action, label):
+    supported()
+    confirm(label+' службу x-ui')
+    run(['systemctl',action,'x-ui'])
     if action in ('start','restart'): xui.panel_health()
+    print('Готово. Текущее состояние:', 'работает' if active('x-ui') else 'не работает')
+
+def service_action():
+    supported()
+    while True:
+        state='работает' if active('x-ui') else 'не работает'
+        enabled=run(['systemctl','is-enabled','x-ui'],check=False).stdout.strip() or 'неизвестно'
+        enabled={'enabled':'включён','disabled':'выключен','static':'управляется системой','not-found':'служба не найдена','masked':'заблокирован'}.get(enabled,enabled)
+        print('\nСлужба x-ui: '+state+'; автозапуск: '+enabled)
+        print('1. Запустить панель')
+        print('2. Остановить панель')
+        print('3. Перезапустить панель')
+        print('4. Включить автозапуск при включении сервера')
+        print('5. Отключить автозапуск')
+        print('0. Назад')
+        choice=input('Выбор: ').strip()
+        if choice=='0': return
+        actions={'1':('start','Запустить'),'2':('stop','Остановить'),'3':('restart','Перезапустить'),'4':('enable','Включить автозапуск для'),'5':('disable','Отключить автозапуск для')}
+        if choice not in actions:
+            print('Выберите число от 0 до 5.'); continue
+        action,label=actions[choice]
+        try:
+            service_command(action,label)
+            if action=='enable': print('Автозапуск включён; чтобы запустить панель сейчас, выберите пункт 1.')
+        except (Error,OSError,ValueError) as e: print('Ошибка:',redact(str(e)))
+
 def xray_check():
     print(run([xui.xray_binary(),'version']).stdout)
     path=Path(input('JSON Xray [/usr/local/x-ui/bin/config.json]: ').strip() or '/usr/local/x-ui/bin/config.json'); xui.validate_config(read(path)); print('Xray configuration OK')
