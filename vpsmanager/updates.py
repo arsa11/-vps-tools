@@ -1,9 +1,44 @@
 """Local/official release updates: immutable releases and atomic current symlink."""
-import os, re, shutil, tempfile, uuid
+import json, os, re, shutil, tempfile, uuid
 from pathlib import Path
 from .core import Error, STATE, confirm, private_dir, read, run, sha, supported, write
 from . import releases
 INSTALL=Path('/opt/vps-manager')
+
+def github_update():
+    """Update from a pinned main-branch commit of the project's GitHub repository."""
+    supported()
+    repo='arsa11/-vps-tools'
+    print('Проверяем изменения в https://github.com/'+repo+' …')
+    try:
+        commit=json.loads(releases.fetch('https://api.github.com/repos/'+repo+'/commits/main',2*1024*1024))
+        revision=commit['sha']
+        message=commit['commit']['message'].split('\n',1)[0]
+    except (ValueError,KeyError,TypeError): raise Error('Не удалось получить сведения о версии с GitHub.') from None
+    if not isinstance(revision,str) or not re.fullmatch(r'[0-9a-f]{40}',revision): raise Error('GitHub вернул некорректный идентификатор версии.')
+    installed=INSTALL/'current'/'vpsmanager-source.json'
+    current=read(installed).get('commit') if installed.is_file() else None
+    print('Установленная версия GitHub:',current[:12] if isinstance(current,str) else 'неизвестна (установлена до появления этой функции)')
+    print('Версия на GitHub:',revision[:12],'-',message)
+    if current==revision:
+        print('Уже установлены последние изменения.'); return
+    print('Источник: ветка main вашего GitHub-репозитория. Архив скачивается по конкретному commit через HTTPS; отдельной подписи релиза нет.')
+    confirm('Загрузить и установить эти изменения, сохранив предыдущую версию')
+    private_dir(STATE/'downloads')
+    with tempfile.TemporaryDirectory(dir=STATE/'downloads') as folder:
+        folder=Path(folder); archive=folder/'source.tar.gz'
+        write(archive,releases.fetch('https://codeload.github.com/'+repo+'/tar.gz/'+revision,64*1024*1024))
+        stage=releases.extract(archive,folder/'stage')
+        candidates=list(stage.glob('*/vps_manager.py'))
+        if len(candidates)!=1: raise Error('Неверная структура архива GitHub.')
+        source=candidates[0].parent
+        if not (source/'vpsmanager/cli.py').is_file() or not (source/'vps-manager.sh').is_file(): raise Error('В архиве отсутствуют файлы менеджера.')
+        run(['/usr/bin/python3','-m','compileall','-q',str(source)],timeout=60)
+        run(['/usr/bin/python3',str(source/'vps_manager.py'),'--version'],cwd=source)
+        write(source/'vpsmanager-source.json',{'repository':repo,'branch':'main','commit':revision})
+        deploy(source)
+    print('Готово. Версия '+revision[:12]+' установлена; настройки и резервные копии сохранены.')
+    print('Выйдите из VPS Manager и запустите vps-manager снова, чтобы открыть обновлённое меню.')
 
 def update():
     supported(); config=read('/etc/vps-manager/update.json') if Path('/etc/vps-manager/update.json').exists() else {}

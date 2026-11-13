@@ -121,7 +121,7 @@ def menu():
       ('Безопасность VPS',lambda:select('Безопасность',[('Аудит — посмотреть порты и firewall, без изменений',security.audit),('Firewall — настроить правила UFW',security.firewall),('Ограничить доступ к панели по IP',security.restrict_panel),('Добавить публичный SSH-ключ',security.ssh_keys),('Отключить парольный SSH после проверки ключа',security.harden_ssh),('Fail2ban — защита SSH от подбора пароля',security.fail2ban)])),
       ('Диагностика',lambda:select('Диагностика',[('Общий отчёт',report),('Тест VLESS-клиента',client_probe),('Проверка Xray JSON',xray_check)])),
       ('Резервные копии и восстановление',lambda:select('Копии',[('Создать',backup_create),('Список',backup_list),('Проверить',backup_verify),('Восстановить',backup_restore),('Транзакции',transactions),('Откатить транзакцию',transaction_rollback)])),
-      ('Обновление VPS Manager',lambda:select('Обновление',[('Установить релиз',updates.update),('Вернуть предыдущую версию',updates.previous)])),
+      ('Обновление VPS Manager',lambda:select('Обновление',[('Проверить и установить изменения с GitHub',updates.github_update),('Установить релиз из файла или другого настроенного источника',updates.update),('Вернуть предыдущую версию',updates.previous)])),
       ('Быстрая настройка нового VPS',quick)])
 
 def main():
