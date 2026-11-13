@@ -81,6 +81,11 @@ def sniffing_form(value):
             raw=input('Домены через запятую; - — очистить; Enter — оставить: ').strip()
             if raw: value['domainsExcluded']=[] if raw=='-' else [x.strip() for x in raw.split(',') if x.strip()]
 
+def section(value,key):
+    if value.get(key) is None: value[key]={}
+    if not isinstance(value[key],dict): raise Error('Некорректный раздел '+key+'.')
+    return value[key]
+
 def transport_form(value):
     while True:
         action=choose('Transport: '+value.get('network','tcp'),[
@@ -89,16 +94,16 @@ def transport_form(value):
         candidate=copy.deepcopy(value)
         if action=='1': candidate['network']='tcp'
         elif action=='2':
-            candidate['network']='ws'; settings=candidate.setdefault('wsSettings',{})
+            candidate['network']='ws'; settings=section(candidate,'wsSettings')
             settings['path']=input('Path ['+settings.get('path','/')+']: ').strip() or settings.get('path','/')
-            headers=settings.setdefault('headers',{})
+            headers=section(settings,'headers')
             raw=input('Host ['+headers.get('Host','')+'], - — очистить: ').strip()
             if raw: headers['Host']='' if raw=='-' else hostname(raw)
         elif action=='3':
-            candidate['network']='grpc'; settings=candidate.setdefault('grpcSettings',{})
+            candidate['network']='grpc'; settings=section(candidate,'grpcSettings')
             settings['serviceName']=input('Service name ['+settings.get('serviceName','')+']: ').strip() or settings.get('serviceName','')
         elif action=='4':
-            candidate['network']='xhttp'; settings=candidate.setdefault('xhttpSettings',{})
+            candidate['network']='xhttp'; settings=section(candidate,'xhttpSettings')
             settings['path']=input('Path ['+settings.get('path','/')+']: ').strip() or settings.get('path','/')
             raw=input('Host ['+settings.get('host','')+'], - — очистить: ').strip()
             if raw: settings['host']='' if raw=='-' else hostname(raw)
