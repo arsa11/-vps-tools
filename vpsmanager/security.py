@@ -12,11 +12,53 @@ def ssh_ports():
     if not ports: raise Error('Не удалось определить порт SSH.')
     return sorted(ports)
 
+def explain_listeners(output):
+    lines=[]
+    for row in output.splitlines()[1:]:
+        parts=row.split()
+        if len(parts)<5: continue
+        address=parts[4]
+        match=re.search(r'users:\(\("([^"\n]+)',row)
+        process=match.group(1) if match else 'служба не определена'
+        local=address.startswith(('127.','[::1]:','::1:'))
+        scope='только на сервере' if local else 'слушает на сетевом адресе; доступ извне зависит от firewall и сети'
+        lines.append(f'  {address} — {process}: {scope}')
+    return lines
+
 def audit():
+    print('АУДИТ БЕЗОПАСНОСТИ — только просмотр, настройки не меняются.\n')
+    results={}
     for cmd in (['ss','-lntup'],['ufw','status','verbose'],['nft','list','ruleset'],['iptables','-S'],['ip6tables','-S']):
-        try: print('$',' '.join(cmd)); print(run(cmd,check=False).stdout[:16000])
-        except Error: pass
-    print('SSH порты:',ssh_ports())
+        name=cmd[0]
+        try:
+            result=run(cmd,check=False,env={**os.environ,'LC_ALL':'C'})
+            results[name]=result
+            print('$',' '.join(cmd))
+            print((result.stdout or result.stderr or '(пусто)')[:16000])
+            if result.returncode: print('Команда завершилась с ошибкой; состояние не определено.')
+        except Error:
+            print('$',' '.join(cmd)); print('Команда недоступна; состояние не определено.')
+    print('\nКАК ПОНИМАТЬ РЕЗУЛЬТАТ:')
+    sockets=results.get('ss')
+    if sockets and sockets.returncode==0:
+        print('Адреса и службы:')
+        print('\n'.join(explain_listeners(sockets.stdout)) or '  Слушающие порты не обнаружены.')
+    else: print('Не удалось получить список портов.')
+    ufw=results.get('ufw')
+    if ufw and ufw.returncode==0:
+        if re.search(r'^Status:\s+inactive',ufw.stdout,re.M): print('UFW выключен. Другие правила или firewall провайдера могут действовать.')
+        elif re.search(r'^Status:\s+active',ufw.stdout,re.M): print('UFW включён. Разрешённые порты смотрите в правилах выше.')
+        else: print('Не удалось распознать состояние UFW.')
+    else: print('Состояние UFW неизвестно; отсутствие команды не означает отсутствие firewall.')
+    for name in ('iptables','ip6tables'):
+        result=results.get(name)
+        if result and result.returncode==0 and re.search(r'^-P INPUT ACCEPT$',result.stdout,re.M):
+            print(name+': политика INPUT — ACCEPT; дополнительные правила выше могут ограничивать трафик.')
+    nft=results.get('nft')
+    if nft and nft.returncode==0 and not nft.stdout.strip(): print('nftables: команда не показала правил.')
+    print('SSH порты:',', '.join(map(str,ssh_ports())))
+    print('Важно: аудит не проверяет firewall провайдера и не доказывает доступность портов извне.')
+    print('Прежде чем включать firewall, определите порты панели и клиентских подключений; SSH-порт нужно сохранить.')
 
 def firewall():
     supported(); audit(); ports=ssh_ports()
