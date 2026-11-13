@@ -84,6 +84,10 @@ def edit_reality(panel,entries):
     if number!=int(old['port']):
         if any(int(i['port'])==number for i in entries): raise Error('Порт занят другим inbound.')
         free_port(number)
+    listen=value.get('listen') or '0.0.0.0'
+    try:
+        with socket.socket(socket.AF_INET6 if ':' in listen else socket.AF_INET) as check: check.bind((listen,0))
+    except OSError: raise Error('Listen должен быть адресом, назначенным этому VPS.') from None
     payload=encode_payload(value)
     probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':value['settings'],'streamSettings':value['streamSettings'],'sniffing':value.get('sniffing',{})}],'outbounds':[{'protocol':'freedom'}]}
     validate_config(probe)
@@ -94,10 +98,15 @@ def edit_reality(panel,entries):
         current=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
         fields=('remark','enable','expiryTime','listen','port','protocol','settings','streamSettings','sniffing','allocate')
         if current is None or draft(current)!=draft(old): raise Error('Inbound изменён другим пользователем. Повторите операцию.')
+        for key in ('up','down'):
+            if key in current: payload[key]=current[key]
         panel.request('panel/api/inbounds/update/'+selected,payload)
         panel.restart_xray(); time.sleep(3); panel_health()
         after=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
         if after is None or any(draft(after).get(k)!=value.get(k) for k in value): raise Error('Панель не сохранила настройки.')
+        if value.get('enable',True):
+            listeners=run(['ss','-H','-lntup']).stdout.splitlines()
+            if not any('xray' in line.lower() and any(field.endswith(':'+str(number)) for field in line.split()) for line in listeners): raise Error('Xray не открыл порт inbound. Выполняется откат.')
         finish(tx,'Проверьте подключение клиентом. Сохранить настройки')
     except BaseException: tx.rollback(); raise
 
