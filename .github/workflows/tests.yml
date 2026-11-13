@@ -19,5 +19,13 @@ jobs:
       - run: docker build -t vps-manager-test -f tests/Dockerfile.systemd .
       - run: docker run -d --name vps-manager-test --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$PWD:/work" -w /work vps-manager-test
       - run: docker exec -e VPS_MANAGER_DISPOSABLE_TEST=1 vps-manager-test python3 tests/systemd_smoke.py
+      - name: Diagnose systemd rollback failure
+        if: failure()
+        run: |
+          docker logs --tail 200 vps-manager-test || true
+          docker exec vps-manager-test systemctl --no-pager --full list-timers --all || true
+          docker exec vps-manager-test systemctl --no-pager --full status 'vps-manager-rollback-*' || true
+          docker exec vps-manager-test journalctl --no-pager -n 200 -u 'vps-manager-rollback-*' || true
       - if: always()
         run: docker rm -f vps-manager-test || true
+
