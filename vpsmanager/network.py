@@ -1,7 +1,7 @@
 """Add provider-assigned addresses without deleting the existing SSH address."""
-import ipaddress, json, re, secrets
+import datetime, ipaddress, json, re, secrets
 from pathlib import Path
-from .core import Error, STATE, active, confirm, os, read, run, supported, write
+from .core import Error, STATE, active, confirm, os, private_dir, read, run, supported, write
 from .transaction import Transaction, finish
 
 def inspect():
@@ -11,6 +11,82 @@ def inspect():
         except Error as e: result[label]=str(e)
     result['manager']='NetworkManager' if active('NetworkManager') else 'netplan' if list(Path('/etc/netplan').glob('*.yaml')) else 'systemd-networkd' if active('systemd-networkd') else 'unknown'
     return result
+
+IP_SNAPSHOT = STATE/'network-addresses.json'
+
+def collect_addresses():
+    """Read local addresses and routes, then independently probe external IPs."""
+    result={'checked_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'interfaces':[], 'families':{}}
+    try:
+        interfaces=json.loads(run(['ip','-j','address']).stdout)
+        for interface in interfaces:
+            addresses=[]
+            for item in interface.get('addr_info',[]):
+                value=item.get('local')
+                try: ip=ipaddress.ip_address(value)
+                except ValueError: continue
+                if ip.is_loopback: continue
+                category='link-local' if ip.is_link_local else ('глобальный' if ip.is_global else 'неглобальный')
+                addresses.append({'address':value,'prefix':item.get('prefixlen'),'family':ip.version,'category':category})
+            if addresses: result['interfaces'].append({'name':interface.get('ifname','?'),'addresses':addresses})
+        result['interfaces_status']='ok'
+    except (Error,ValueError,TypeError): result['interfaces_status']='unknown'
+    for family in (4,6):
+        entry={'default_routes':None,'external_ip':None,'external_status':'unknown'}
+        try:
+            routes=json.loads(run(['ip','-j','-'+str(family),'route','show','default']).stdout)
+            entry['default_routes']=[{'gateway':r.get('gateway'),'dev':r.get('dev'),'metric':r.get('metric')} for r in routes]
+        except (Error,ValueError,TypeError): pass
+        try:
+            response=run(['curl','-'+str(family),'--noproxy','*','--fail','--silent','--show-error','--max-time','10','https://www.cloudflare.com/cdn-cgi/trace'],timeout=12,check=False)
+            values=[line[3:] for line in response.stdout.splitlines() if line.startswith('ip=')]
+            address=ipaddress.ip_address(values[0]) if response.returncode==0 and len(values)==1 else None
+            if address and address.version==family:
+                entry['external_ip']=str(address); entry['external_status']='ok'
+            else: entry['external_status']='unavailable'
+        except (Error,ValueError): entry['external_status']='unavailable'
+        result['families'][str(family)]=entry
+    return result
+
+def print_addresses(result):
+    print('\nПроверено (UTC):',result.get('checked_utc','неизвестно'))
+    if result.get('interfaces_status')!='ok': print('Не удалось прочитать адреса интерфейсов.')
+    elif not result.get('interfaces'): print('На интерфейсах не найдено адресов кроме loopback.')
+    for interface in result.get('interfaces',[]):
+        print('Интерфейс',interface['name']+':')
+        for address in interface['addresses']:
+            print('  IPv'+str(address['family'])+': '+address['address']+'/'+str(address['prefix'])+' ('+address['category']+')')
+    for family in ('4','6'):
+        item=result.get('families',{}).get(family,{})
+        routes=item.get('default_routes')
+        if routes is None: route='не удалось определить'
+        elif not routes: route='нет'
+        else: route='; '.join('через '+str(r.get('gateway') or 'без шлюза')+' / '+str(r.get('dev') or '?') for r in routes)
+        print('IPv'+family+' — маршрут по умолчанию:',route)
+        print('IPv'+family+' — внешний IP:',item.get('external_ip') or 'не удалось определить')
+    print('Внешний IP виден проверочному сервису Cloudflare. Неудачная проверка сама по себе не доказывает отсутствие IPv6.')
+
+def check_addresses():
+    result=collect_addresses()
+    private_dir(STATE)
+    previous=None
+    try: previous=read(IP_SNAPSHOT) if IP_SNAPSHOT.is_file() else None
+    except (OSError,ValueError): print('Предыдущий сохранённый результат не удалось прочитать.')
+    print_addresses(result)
+    if previous:
+        for family in ('4','6'):
+            old=previous.get('families',{}).get(family,{}).get('external_ip')
+            new=result['families'][family].get('external_ip')
+            if old and new and old!=new: print('Внешний IPv'+family+' изменился:',old,'→',new)
+    write(IP_SNAPSHOT,result)
+    print('Результат сохранён:',IP_SNAPSHOT,'(только последний результат, права 0600).')
+
+def show_saved_addresses():
+    try: result=read(IP_SNAPSHOT)
+    except FileNotFoundError: raise Error('Сохранённого результата ещё нет. Сначала выберите проверку IPv4 и IPv6.') from None
+    except (OSError,ValueError): raise Error('Не удалось прочитать сохранённый результат.') from None
+    print('Последний сохранённый результат; состояние сети могло измениться:')
+    print_addresses(result)
 
 def validate_address(address,gateway,interface):
     try: addr=ipaddress.ip_interface(address); gw=ipaddress.ip_address(gateway)
