@@ -1,4 +1,4 @@
-"""3x-ui authenticated API. Credentials remain in memory."""
+"""3x-ui authenticated API. Optional private credential storage."""
 import contextlib, getpass, http.cookiejar, ipaddress, json, socket, sqlite3, ssl, urllib.parse, urllib.request, urllib.error
 from pathlib import Path
 from .core import Error
@@ -101,6 +101,35 @@ def detect_local_url(db=Path('/etc/x-ui/x-ui.db')):
         return f'{scheme}://{host}:{number}{path}'
     except (OSError,ValueError,sqlite3.Error): return None
 
+def authenticate(url):
+    from .core import STATE, private_dir, read, write
+    import os, stat
+    directory=private_dir(STATE/'panel-access')
+    path=directory/'credentials.json'
+    if path.is_symlink(): raise Error('Файл данных панели не должен быть ссылкой.')
+    saved=None
+    if path.exists():
+        info=path.stat()
+        if os.name=='posix' and (info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)&0o077):
+            raise Error('Небезопасные права файла данных панели: нужны владелец root и режим 600.')
+        saved=read(path)
+    url=url.rstrip('/')+'/'
+    if saved and saved.get('url')==url:
+        print('Используются сохранённые данные панели.')
+        if input('Enter — войти; 1 — заменить данные; 2 — удалить: ').strip() not in ('1','2'):
+            try:
+                return Panel(url,saved['username'],saved['password'],getpass.getpass('Код 2FA, если включён (иначе Enter): '))
+            except Error:
+                print('Вход с сохранёнными данными не удался. Введите данные заново.')
+        else:
+            path.unlink()
+    username=input('Логин: ').strip()
+    password=getpass.getpass('Пароль: ')
+    panel=Panel(url,username,password,getpass.getpass('Код 2FA, если включён (иначе Enter): '))
+    if input('Сохранить логин и пароль на VPS (только root, файл 600)? [Д/н]: ').strip().lower() not in ('н','нет','n','no'):
+        write(path,{'url':url,'username':username,'password':password},0o600)
+    return panel
+
 def connect():
     import socket
     from .core import run
@@ -119,4 +148,5 @@ def connect():
             local.update(a['local'] for a in item.get('addr_info',[]))
         if not addresses or not addresses<=local: raise Error('Панель должна находиться на этом VPS: резервирование и откат выполняются локально.')
     except socket.gaierror: raise Error('Домен панели не разрешается.') from None
-    return Panel(url,input('Логин: ').strip(),getpass.getpass('Пароль: '),getpass.getpass('Код 2FA, если включён (иначе Enter): '))
+    return authenticate(url)
+
