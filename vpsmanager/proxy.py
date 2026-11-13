@@ -77,36 +77,36 @@ def edit_reality(panel,entries):
     if not selected: return
     old=next((i for i in candidates if str(i['id'])==selected),None)
     if old is None: raise Error('Неизвестный ID.')
-    settings=panel_json(old['streamSettings'])['realitySettings']
-    names=settings.get('serverNames',[])
-    if len(names)!=1: raise Error('Несколько SNI: используйте расширенный редактор панели, чтобы сохранить список.')
-    number=port(input('Порт ['+str(old['port'])+']: ').strip() or old['port'])
+    from .inbound_editor import edit, payload as encode_payload, draft
+    value=edit(old)
+    if value is None: return
+    number=port(value['port']); remark=value.get('remark','')
     if number!=int(old['port']):
         if any(int(i['port'])==number for i in entries): raise Error('Порт занят другим inbound.')
         free_port(number)
-    remark=input('Название ['+old.get('remark','')+']: ').strip() or old.get('remark','')
-    sni=hostname(input('SNI ['+names[0]+']: ').strip() or names[0])
-    previous=settings.get('dest',settings.get('target',''))
-    target=input('TLS target host:port ['+str(previous)+']: ').strip() or str(previous)
-    host,separator,number_text=target.rpartition(':')
-    if not separator: raise Error('Нужен TLS target host:port.')
-    host=hostname(host.strip('[]')); target_port=port(number_text)
-    target=('['+host+']' if ':' in host else host)+':'+str(target_port)
-    payload=reality_payload(old,number,remark,sni,target)
-    run(['openssl','s_client','-connect',target,'-servername',sni,'-tls1_3','-brief'],input='',timeout=15)
-    probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':panel_json(payload['settings']),'streamSettings':panel_json(payload['streamSettings'])}],'outbounds':[{'protocol':'freedom'}]}
+    listen=value.get('listen') or '0.0.0.0'
+    try:
+        with socket.socket(socket.AF_INET6 if ':' in listen else socket.AF_INET) as check: check.bind((listen,0))
+    except OSError: raise Error('Listen должен быть адресом, назначенным этому VPS.') from None
+    payload=encode_payload(value)
+    probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':value['settings'],'streamSettings':value['streamSettings'],'sniffing':value.get('sniffing',{})}],'outbounds':[{'protocol':'freedom'}]}
     validate_config(probe)
-    print('Клиенты, UUID и ключи сохраняются. При изменении порта или SNI обновите настройки клиентов.')
+    print('Изменение UUID, ключей, SNI, порта и транспорта требует обновления клиентов.')
     confirm('Изменить выбранный inbound '+selected)
     tx=Transaction('Edit Reality inbound',PANEL_PATHS,undo_panel(),300).arm()
     try:
         current=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
         fields=('remark','enable','expiryTime','listen','port','protocol','settings','streamSettings','sniffing','allocate')
-        if current is None or any(current.get(k)!=old.get(k) for k in fields): raise Error('Inbound изменён другим пользователем. Повторите операцию.')
+        if current is None or draft(current)!=draft(old): raise Error('Inbound изменён другим пользователем. Повторите операцию.')
+        for key in ('up','down'):
+            if key in current: payload[key]=current[key]
         panel.request('panel/api/inbounds/update/'+selected,payload)
         panel.restart_xray(); time.sleep(3); panel_health()
         after=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
-        if after is None or int(after['port'])!=number or after.get('remark')!=remark or panel_json(after['streamSettings'])!=panel_json(payload['streamSettings']): raise Error('Панель не сохранила настройки.')
+        if after is None or any(draft(after).get(k)!=value.get(k) for k in value): raise Error('Панель не сохранила настройки.')
+        if value.get('enable',True):
+            listeners=run(['ss','-H','-lntup']).stdout.splitlines()
+            if not any('xray' in line.lower() and any(field.endswith(':'+str(number)) for field in line.split()) for line in listeners): raise Error('Xray не открыл порт inbound. Выполняется откат.')
         finish(tx,'Проверьте подключение клиентом. Сохранить настройки')
     except BaseException: tx.rollback(); raise
 
@@ -182,4 +182,3 @@ def routing():
         if panel.template().get('routing')!=new['routing']: raise Error('Панель не сохранила правила.')
         finish(tx,'Проверьте RU и зарубежный домен через подключённый клиент. Маршруты работают')
     except BaseException: tx.rollback(); raise
-
