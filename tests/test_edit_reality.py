@@ -18,3 +18,15 @@ class EditRealityTests(unittest.TestCase):
         self.assertEqual(stream['realitySettings']['serverNames'],['example.org'])
         self.assertEqual(result['port'],8443)
 
+
+    def test_panel_returns_decoded_objects(self):
+        original,_=build_reality(443,'example.com',443,'private','public','client','abcd','email')
+        for key in ('settings','streamSettings','sniffing','allocate'):
+            original[key]=json.loads(original[key])
+        before=copy.deepcopy(original)
+        result=reality_payload(original,443,'changed','example.org','example.org:443')
+        self.assertEqual(original,before)
+        self.assertEqual(json.loads(result['settings']),before['settings'])
+        stream=json.loads(result['streamSettings'])
+        self.assertEqual(stream['realitySettings']['privateKey'],'private')
+        self.assertEqual(stream['realitySettings']['settings']['serverName'],'example.org')
