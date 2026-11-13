@@ -31,3 +31,17 @@ class InboundEditorTests(unittest.TestCase):
         self.assertEqual(value['clients'],[])
     def test_ipv6_target(self):
         self.assertEqual(target_address('[::1]:443'),('::1',443,'[::1]:443'))
+
+    def test_add_client_with_default_values_and_vision(self):
+        value={'clients':[{'email':'existing'}]}
+        with patch('builtins.input',side_effect=['1','','','','','','vision','0']), patch('vpsmanager.inbound_editor.getpass.getpass',return_value=''):
+            clients(value)
+        self.assertEqual(len(value['clients']),2)
+        self.assertEqual(value['clients'][1]['flow'],'xtls-rprx-vision')
+
+    def test_incomplete_listen_ip_rejected_in_draft(self):
+        entry=self.entry()
+        with patch('builtins.input',side_effect=['1','','','','88','8']), patch('builtins.print') as output:
+            value=edit(entry)
+        self.assertEqual(value.get('listen'),entry.get('listen'))
+        self.assertTrue(any('Это не порт' in str(call) for call in output.call_args_list))

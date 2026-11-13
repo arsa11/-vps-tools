@@ -1,5 +1,5 @@
 """Interactive edits to a detached inbound draft; apply through proxy transactions."""
-import copy, datetime, getpass, json, secrets, ssl, socket, uuid
+import copy, datetime, getpass, ipaddress, json, secrets, ssl, socket, uuid
 from .core import Error, hostname, port
 
 JSON_FIELDS=('settings','streamSettings','sniffing','allocate')
@@ -67,9 +67,10 @@ def clients(settings):
         c['totalGB']=number('Лимит трафика в байтах, 0 — без лимита',c.get('totalGB',0))
         c['limitIp']=number('Лимит IP, 0 — без лимита',c.get('limitIp',0))
         c['expiryTime']=expiry(c.get('expiryTime',0))
-        flow=input('Flow: vision / none / Enter — оставить: ').strip()
+        flow=input('Flow: 1 — vision, 2 — none, Enter — оставить: ').strip().lower()
+        flow={'1':'vision','2':'none','xtls-rprx-vision':'vision'}.get(flow,flow)
         if flow:
-            if flow not in ('vision','none'): raise Error('Неверный flow.')
+            if flow not in ('vision','none'): raise Error('Flow: введите 1 (vision) или 2 (none), либо нажмите Enter.')
             c['flow']='xtls-rprx-vision' if flow=='vision' else ''
         if action=='1': items.append(c)
         else: items[index]=c
@@ -131,8 +132,12 @@ def edit(entry):
                 value['remark']=input('Название ['+value.get('remark','')+']: ').strip() or value.get('remark','')
                 value['enable']=yes('Inbound включён',value.get('enable',True))
                 value['port']=port(input('Порт ['+str(value['port'])+']: ').strip() or value['port'])
-                raw=input('Listen ['+value.get('listen','')+'], * — все адреса: ').strip()
-                if raw: value['listen']='' if raw=='*' else hostname(raw)
+                raw=input('Listen — локальный IP ['+value.get('listen','')+'], * — все адреса, Enter — оставить: ').strip()
+                if raw:
+                    if raw=='*': value['listen']=''
+                    else:
+                        try: value['listen']=str(ipaddress.ip_address(raw))
+                        except ValueError: raise Error('Listen — полный IP-адрес, например 0.0.0.0 или ::. Это не порт. Для всех адресов введите *.') from None
                 value['total']=number('Общий лимит байт, 0 — без лимита',value.get('total',0))
                 value['expiryTime']=expiry(value.get('expiryTime',0))
             elif action=='2': clients(value['settings'])
@@ -154,6 +159,7 @@ def edit(entry):
                     name=hostname(name.strip()); print('Проверка:',name)
                     try: check_target(name+':443',name)
                     except (OSError,ValueError,Error): print('Проверка TLS не пройдена.')
-        except (OSError,ValueError,KeyError,Error):
+        except (OSError,ValueError,KeyError,Error) as exc:
             value=before
-            print('Настройки раздела не изменены: проверьте введённые значения или доступность TLS target.')
+            reason=str(exc) if isinstance(exc,Error) else {'ValueError':'Некорректный формат числа, даты, UUID или JSON.','KeyError':'В ответе панели отсутствует обязательное поле.','SSLError':'Не удалось проверить TLS-сертификат.'}.get(type(exc).__name__,'Ошибка соединения или недоступный TLS target.')
+            print('Настройки раздела не изменены. '+reason+' [тип: '+type(exc).__name__+']')
