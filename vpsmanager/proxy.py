@@ -50,9 +50,16 @@ def reality():
         finish(tx,'Подключение клиентом проверено и inbound нужно сохранить')
     except BaseException: tx.rollback(); raise
 
+def panel_json(value):
+    if isinstance(value,str): value=json.loads(value)
+    if not isinstance(value,dict): raise Error('Панель вернула некорректные настройки inbound.')
+    return copy.deepcopy(value)
+
 def reality_payload(entry,number,remark,sni,target):
     payload={key:copy.deepcopy(entry[key]) for key in ('up','down','total','remark','enable','expiryTime','listen','port','protocol','settings','streamSettings','sniffing','allocate') if key in entry}
-    stream=json.loads(payload['streamSettings'])
+    for key in ('settings','streamSettings','sniffing','allocate'):
+        if key in payload and isinstance(payload[key],dict): payload[key]=json.dumps(payload[key])
+    stream=panel_json(payload['streamSettings'])
     if payload['protocol']!='vless' or stream.get('security')!='reality': raise Error('Выбранный inbound не VLESS Reality.')
     payload.update(port=port(number),remark=remark)
     reality=stream['realitySettings']
@@ -63,14 +70,14 @@ def reality_payload(entry,number,remark,sni,target):
     return payload
 
 def edit_reality(panel,entries):
-    candidates=[i for i in entries if i.get('protocol')=='vless' and json.loads(i['streamSettings']).get('security')=='reality']
+    candidates=[i for i in entries if i.get('protocol')=='vless' and panel_json(i['streamSettings']).get('security')=='reality']
     if not candidates: raise Error('Существующих VLESS Reality inbound нет.')
     for i in candidates: print('ID:',i['id'],'порт:',i['port'],'название:',i.get('remark',''))
     selected=input('ID inbound (Enter — назад): ').strip()
     if not selected: return
     old=next((i for i in candidates if str(i['id'])==selected),None)
     if old is None: raise Error('Неизвестный ID.')
-    settings=json.loads(old['streamSettings'])['realitySettings']
+    settings=panel_json(old['streamSettings'])['realitySettings']
     names=settings.get('serverNames',[])
     if len(names)!=1: raise Error('Несколько SNI: используйте расширенный редактор панели, чтобы сохранить список.')
     number=port(input('Порт ['+str(old['port'])+']: ').strip() or old['port'])
@@ -87,7 +94,7 @@ def edit_reality(panel,entries):
     target=('['+host+']' if ':' in host else host)+':'+str(target_port)
     payload=reality_payload(old,number,remark,sni,target)
     run(['openssl','s_client','-connect',target,'-servername',sni,'-tls1_3','-brief'],input='',timeout=15)
-    probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':json.loads(payload['settings']),'streamSettings':json.loads(payload['streamSettings'])}],'outbounds':[{'protocol':'freedom'}]}
+    probe={'inbounds':[{'listen':'127.0.0.1','port':number,'protocol':'vless','settings':panel_json(payload['settings']),'streamSettings':panel_json(payload['streamSettings'])}],'outbounds':[{'protocol':'freedom'}]}
     validate_config(probe)
     print('Клиенты, UUID и ключи сохраняются. При изменении порта или SNI обновите настройки клиентов.')
     confirm('Изменить выбранный inbound '+selected)
@@ -99,7 +106,7 @@ def edit_reality(panel,entries):
         panel.request('panel/api/inbounds/update/'+selected,payload)
         panel.restart_xray(); time.sleep(3); panel_health()
         after=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
-        if after is None or int(after['port'])!=number or after.get('remark')!=remark or json.loads(after['streamSettings'])!=json.loads(payload['streamSettings']): raise Error('Панель не сохранила настройки.')
+        if after is None or int(after['port'])!=number or after.get('remark')!=remark or panel_json(after['streamSettings'])!=panel_json(payload['streamSettings']): raise Error('Панель не сохранила настройки.')
         finish(tx,'Проверьте подключение клиентом. Сохранить настройки')
     except BaseException: tx.rollback(); raise
 
