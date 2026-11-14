@@ -157,7 +157,6 @@ def edit(entry):
             elif action=='7':
                 from .panel_forms import find_target
                 find_target(value['streamSettings']['realitySettings'])
-        except (OSError,ValueError,Error): print('Проверка TLS не пройдена.')
         except (OSError,ValueError,KeyError,Error) as exc:
             value=before
             reason=str(exc) if isinstance(exc,Error) else {'ValueError':'Некорректный формат числа, даты, UUID или JSON.','KeyError':'В ответе панели отсутствует обязательное поле.','SSLError':'Не удалось проверить TLS-сертификат.'}.get(type(exc).__name__,'Ошибка соединения или недоступный TLS target.')
