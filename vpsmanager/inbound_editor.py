@@ -155,6 +155,9 @@ def edit(entry):
                 r=value['streamSettings']['realitySettings']
                 check_target(r.get('target',r.get('dest','')),r['serverNames'][0])
             elif action=='7':
+                from .panel_forms import find_target
+                find_target(value['streamSettings']['realitySettings'])
+            elif action=='legacy-target-list':
                 domains=input('До 10 доменов через запятую для проверки TLS на 443: ').split(',')
                 if len(domains)>10: raise Error('Максимум 10 доменов.')
                 for name in domains:
@@ -165,3 +168,29 @@ def edit(entry):
             value=before
             reason=str(exc) if isinstance(exc,Error) else {'ValueError':'Некорректный формат числа, даты, UUID или JSON.','KeyError':'В ответе панели отсутствует обязательное поле.','SSLError':'Не удалось проверить TLS-сертификат.'}.get(type(exc).__name__,'Ошибка соединения или недоступный TLS target.')
             print('Настройки раздела не изменены. '+reason+' [тип: '+type(exc).__name__+']')
+
+def unsaved_fields(before,expected,actual,path=''):
+    """Check requested edits; tolerate server defaults on unchanged fields."""
+    if before==expected:
+        return []
+    if isinstance(expected,dict) and isinstance(actual,dict):
+        previous=before if isinstance(before,dict) else {}
+        missing=[]
+        for key in expected:
+            missing.extend(unsaved_fields(previous.get(key),expected[key],actual.get(key),path+'.'+key if path else key))
+        for key in previous.keys()-expected.keys():
+            if key in actual: missing.append(path or 'settings')
+        return missing
+    if isinstance(expected,list) and isinstance(actual,list):
+        if len(expected)!=len(actual): return [path]
+        if all(isinstance(item,dict) and 'id' in item for item in expected+actual):
+            wanted={item['id']:item for item in expected}
+            found={item['id']:item for item in actual}
+            if set(wanted)!=set(found): return [path]
+            old={item['id']:item for item in before or [] if isinstance(item,dict) and 'id' in item}
+            result=[]
+            for index,item in enumerate(expected):
+                result.extend(unsaved_fields(old.get(item['id']),item,found[item['id']],path+'['+str(index)+']'))
+            return result
+        return [] if expected==actual else [path]
+    return [] if expected==actual else [path]
