@@ -77,7 +77,7 @@ def edit_reality(panel,entries):
     if not selected: return
     old=next((i for i in candidates if str(i['id'])==selected),None)
     if old is None: raise Error('Неизвестный ID.')
-    from .inbound_editor import edit, payload as encode_payload, draft
+    from .inbound_editor import edit, payload as encode_payload, draft, unsaved_fields
     value=edit(old)
     if value is None: return
     number=port(value['port']); remark=value.get('remark','')
@@ -103,7 +103,9 @@ def edit_reality(panel,entries):
         panel.request('panel/api/inbounds/update/'+selected,payload)
         panel.restart_xray(); time.sleep(3); panel_health()
         after=next((i for i in panel.inbounds() if str(i['id'])==selected),None)
-        if after is None or any(draft(after).get(k)!=value.get(k) for k in value): raise Error('Панель не сохранила настройки.')
+        if after is None: raise Error('Inbound отсутствует после сохранения.')
+        missing=unsaved_fields(draft(old),value,draft(after))
+        if missing: raise Error('Панель не сохранила изменённые поля: '+', '.join(missing[:12])+'. Выполняется откат.')
         if value.get('enable',True):
             listeners=run(['ss','-H','-lntup']).stdout.splitlines()
             if not any('xray' in line.lower() and any(field.endswith(':'+str(number)) for field in line.split()) for line in listeners): raise Error('Xray не открыл порт inbound. Выполняется откат.')
