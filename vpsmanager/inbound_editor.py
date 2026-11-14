@@ -157,13 +157,7 @@ def edit(entry):
             elif action=='7':
                 from .panel_forms import find_target
                 find_target(value['streamSettings']['realitySettings'])
-            elif action=='legacy-target-list':
-                domains=input('До 10 доменов через запятую для проверки TLS на 443: ').split(',')
-                if len(domains)>10: raise Error('Максимум 10 доменов.')
-                for name in domains:
-                    name=hostname(name.strip()); print('Проверка:',name)
-                    try: check_target(name+':443',name)
-                    except (OSError,ValueError,Error): print('Проверка TLS не пройдена.')
+        except (OSError,ValueError,Error): print('Проверка TLS не пройдена.')
         except (OSError,ValueError,KeyError,Error) as exc:
             value=before
             reason=str(exc) if isinstance(exc,Error) else {'ValueError':'Некорректный формат числа, даты, UUID или JSON.','KeyError':'В ответе панели отсутствует обязательное поле.','SSLError':'Не удалось проверить TLS-сертификат.'}.get(type(exc).__name__,'Ошибка соединения или недоступный TLS target.')
