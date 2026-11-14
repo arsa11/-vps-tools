@@ -164,7 +164,7 @@ def edit(entry):
 
 def unsaved_fields(before,expected,actual,path=''):
     """Check requested edits; tolerate server defaults on unchanged fields."""
-    critical=path in ('settings','streamSettings','streamSettings.realitySettings','streamSettings.network','streamSettings.security','streamSettings.realitySettings.privateKey','streamSettings.realitySettings.shortIds','streamSettings.realitySettings.serverNames','streamSettings.realitySettings.dest','streamSettings.realitySettings.target') or path.startswith('settings.clients')
+    critical=path in ('','settings','streamSettings','streamSettings.realitySettings','streamSettings.network','streamSettings.security','streamSettings.realitySettings.privateKey','streamSettings.realitySettings.shortIds','streamSettings.realitySettings.serverNames','streamSettings.realitySettings.dest','streamSettings.realitySettings.target') or path.startswith('settings.clients')
     if before==expected and not critical:
         return []
     if isinstance(expected,dict) and isinstance(actual,dict):
