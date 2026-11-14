@@ -24,3 +24,14 @@ class SaveVerificationTests(unittest.TestCase):
         old={'clients':[{'id':'a'},{'id':'b'}]}
         new={'clients':[{'id':'a'}]}
         self.assertEqual(unsaved_fields(old,new,old),['clients'])
+
+    def test_unchanged_clients_must_not_disappear(self):
+        before={'remark':'old','settings':{'clients':[{'id':'a'}]}}
+        expected={'remark':'new','settings':{'clients':[{'id':'a'}]}}
+        actual={'remark':'new','settings':{'clients':[]}}
+        self.assertEqual(unsaved_fields(before,expected,actual),['settings.clients'])
+    def test_unchanged_private_key_must_be_preserved(self):
+        before={'remark':'old','streamSettings':{'realitySettings':{'privateKey':'secret'}}}
+        expected={'remark':'new','streamSettings':{'realitySettings':{'privateKey':'secret'}}}
+        actual={'remark':'new','streamSettings':{'realitySettings':{'privateKey':''}}}
+        self.assertEqual(unsaved_fields(before,expected,actual),['streamSettings.realitySettings.privateKey'])
