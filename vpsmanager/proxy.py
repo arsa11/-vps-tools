@@ -176,10 +176,8 @@ def select_cascade_inbounds(entries):
 
 def routing():
     supported(); panel=connect(); entries=panel.inbounds()
-    for i in entries: print(i['id'],i.get('tag'),i.get('port'),i.get('remark'))
-    tags=[s.strip() for s in input('Теги inbound через запятую: ').split(',') if s.strip()]
-    known={i.get('tag') for i in entries}
-    if not tags or not set(tags)<=known: raise Error('Неизвестный inbound.')
+    tags=select_cascade_inbounds(entries)
+    if not tags: return
     outbound=parse_vless(getpass.getpass('Полная EU VLESS-ссылка (ввод скрыт): '))
     print('Проверка реального VLESS-подключения RU → EU…')
     try: print(redact(outbound_probe(outbound)))
