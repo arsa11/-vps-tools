@@ -5,13 +5,13 @@ from .core import Error
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs): return None
 class Panel:
-    def __init__(self,url,username,password,two_factor=''):
+    def __init__(self,url,username,password,two_factor='',*,allow_remote_http=False):
         p=urllib.parse.urlsplit(url)
         if p.scheme not in ('http','https') or not p.hostname or p.username or p.query or p.fragment: raise Error('Неверный URL панели.')
         if p.scheme=='http':
             try: local=ipaddress.ip_address(p.hostname).is_loopback
             except ValueError: local=p.hostname=='localhost'
-            if not local: raise Error('HTTP разрешён только для localhost. Для удалённой панели используйте HTTPS.')
+            if not local and not allow_remote_http: raise Error('HTTP через внешний адрес требует явного разрешения.')
         self.url=url.rstrip('/')+'/'
         self.username=username; self.password=password; self.two_factor=two_factor
         self.opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),NoRedirect())
@@ -104,6 +104,16 @@ def detect_local_url(db=Path('/etc/x-ui/x-ui.db')):
 def authenticate(url):
     from .core import STATE, private_dir, read, write
     import os, stat
+    options={}
+    parsed=urllib.parse.urlsplit(url)
+    if parsed.scheme=='http':
+        try: local=ipaddress.ip_address(parsed.hostname).is_loopback
+        except ValueError: local=parsed.hostname=='localhost'
+        if not local:
+            print('HTTP не шифрует логин, пароль и сессию панели.')
+            if input('Разрешить HTTP через внешний адрес для этого входа? [да/НЕТ]: ').strip().lower() not in ('да','yes','y'):
+                raise Error('Вход по HTTP отменён.')
+            options['allow_remote_http']=True
     directory=private_dir(STATE/'panel-access')
     path=directory/'credentials.json'
     if path.is_symlink(): raise Error('Файл данных панели не должен быть ссылкой.')
@@ -119,7 +129,7 @@ def authenticate(url):
         choice=input('Enter — войти; 1 — заменить данные; 2 — удалить: ').strip()
         if choice not in ('1','2'):
             try:
-                return Panel(url,saved['username'],saved['password'],getpass.getpass('Код 2FA, если включён (иначе Enter): '))
+                return Panel(url,saved['username'],saved['password'],getpass.getpass('Код 2FA, если включён (иначе Enter): '),**options)
             except Error:
                 print('Вход с сохранёнными данными не удался. Введите данные заново.')
         else:
