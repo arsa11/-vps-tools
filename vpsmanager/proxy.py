@@ -153,6 +153,27 @@ def build_cascade(config,outbound,tags,mode='ru-direct-eu',exceptions=None,prior
     routing['rules']=new+rules if priority=='first' else rules+new
     return result
 
+def select_cascade_inbounds(entries):
+    if not entries:
+        print('В панели нет inbound. Сначала создайте подключение в пункте 4 или в 3x-ui.')
+        return []
+    choices=[entry for entry in entries if entry.get('enable',True) and isinstance(entry.get('tag'),str) and entry['tag'].strip()]
+    if not choices:
+        print('Нет включённых inbound с тегами. Проверьте подключения в 3x-ui; каскад не изменён.')
+        return []
+    for index,entry in enumerate(choices,1):
+        print(str(index)+'. '+str(entry.get('remark') or 'Без названия')+' | порт '+str(entry.get('port'))+' | '+str(entry.get('protocol'))+' | тег '+entry['tag'])
+    while True:
+        answer=input('Номера подключений через запятую; all — все; 0/Enter — назад: ').strip().lower()
+        if answer in ('','0'): return []
+        if answer=='all': return list(dict.fromkeys(entry['tag'] for entry in choices))
+        try: indices=[int(item.strip())-1 for item in answer.split(',')]
+        except ValueError:
+            print('Введите номера из списка, например 1 или 1,2.'); continue
+        if any(index<0 or index>=len(choices) for index in indices):
+            print('Такого номера в списке нет.'); continue
+        return list(dict.fromkeys(choices[index]['tag'] for index in indices))
+
 def routing():
     supported(); panel=connect(); entries=panel.inbounds()
     for i in entries: print(i['id'],i.get('tag'),i.get('port'),i.get('remark'))
